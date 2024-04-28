@@ -1,84 +1,41 @@
 public with sharing class OpportunityTriggerHandler {
-    public static List AmountValidation (List<Opportunity> oppInvaidAmounts) {
-        for (Opportunity opp : oppInvaidAmounts) {
-            if (opp.Amount < 5000) {
-                opp.addError('Opportunity amount must be greater than or equal to 5000');
-                oppInvaidAmounts.add(opp);
+ public static void updateOpportunity(List<Opportunity> opps) {
+        for (Opportunity opp: opps) {
+            if(opp.amount < 5000)  {
+               opp.adderror('Opportunity amount must be greater than 5000');
             }
         }
-           return oppInvaidAmounts;
-    }
-
-
-    public static void deleteCloseWonOpportunity(){
-        Set<Id> closedWonOpportunityIds = new Set<Id>();
-        Map<Id, Id> opportunityAccountIds = new Map<Id, Id>();
-    
-        for (Opportunity opp : closedWonOpportunityIds) {
-            if (opp.StageName == 'Closed Won') {
-                closedWonOpportunityIds.add(opp.Id);
-                opportunityAccountIds.put(opp.Id, opp.AccountId);
+        List<Id> accountIds = new List<Id>();
+        for(Opportunity o : opps) {
+            if(accountIds.size() != null) {
+                accountIds.add(o.AccountId);
             }
         }
-    
-        // Query related Account industries
-        Map<Id, Account> accountIndustries = new Map<Id, Account>(
-            [SELECT Id, Industry FROM Account WHERE Id IN :opportunityAccountIds.values()]
-        );
-    
-        // Check if the Account industry is 'Banking' and if so, prevent deletion of the opportunity
-        for (Id oppId : closedWonOpportunityIds) {
-            if (accountIndustries.containsKey(opportunityAccountIds.get(oppId)) && 
-                accountIndustries.get(opportunityAccountIds.get(oppId)).Industry == 'Banking') {
-                Opportunity opp = Trigger.oldMap.get(oppId);
-                opp.addError('Cannot delete closed opportunity for a banking account that is won');
-            }
-        }
-    }
-
-    public static void setPrimaryContact(){
-     
-        // Collect the IDs of the opportunities being updated
-        Set<Id> updatedOpportunityIds = new Set<Id>();
-        for (Opportunity opp : Trigger.new) {
-            if (Trigger.oldMap.get(opp.Id).PrimaryContact__c != opp.PrimaryContact__c) {
-                updatedOpportunityIds.add(opp.Id);
-            }
-        }
-    
-        // If no opportunities are being updated, exit
-        if (updatedOpportunityIds.isEmpty()) {
-            return;
-        }
-    
-        // Query for the related accounts of the updated opportunities
-        List<Account> relatedAccounts = [SELECT Id, (SELECT Id, Name, Title FROM Contacts WHERE Title = 'CEO') FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Id IN :updatedOpportunityIds)];
-    
-        // Map to hold the CEO contacts by account ID
-        Map<Id, Contact> ceoContactsByAccountId = new Map<Id, Contact>();
-    
-        // Populate the map with CEO contacts
-        for (Account acc : relatedAccounts) {
-            for (Contact con : acc.Contacts) {
-                if (con.Title == 'CEO') {
-                    ceoContactsByAccountId.put(acc.Id, con);
-                    break; // No need to search further once CEO is found
+        if(accountIds.size() > 0) {
+            List<Contact> contacts = [SELECT Id, AccountId, Title FROM Contact WHERE AccountId IN :accountIds AND Title = 'CEO'];
+            Map<Id, Contact> acctConMap = new Map<Id, Contact>();
+            for(Contact con : contacts) {
+                acctConMap.put(con.AccountId, con);
+                System.debug(acctConMap);
+            for (Opportunity opp : opps) {
+                  opp.Primary_Contact__c = acctConMap.get(opp.AccountId).Id;
+                  }
                 }
+             }
+    }
+    public static void deleteOppotunity(List<Opportunity> opps) {
+        //When an opportunity is deleted prevent the deletion of a closed won opportunity if the account industry is 'Banking'.
+        Set<Id> accountIds = new Set<Id>();
+        for(Opportunity opp : opps) {
+            if(opp.StageName == 'Closed Won') {
+                accountIds.add(opp.AccountId);
             }
         }
-    
-        // Update the primary contact on the opportunities
-        List<Opportunity> opportunitiesToUpdate = new List<Opportunity>();
-        for (Opportunity opp :  opportunitiesToUpdate) {
-            if (ceoContactsByAccountId.containsKey(opp.AccountId)) {
-                opp.PrimaryContact__c = ceoContactsByAccountId.get(opp.AccountId).Id;
-                opportunitiesToUpdate.add(opp);
-            }
-        }
-    
-        // Perform the update
-        if (!opportunitiesToUpdate.isEmpty()) {
-            update opportunitiesToUpdate;
+        Map<Id, Account> accountIdMap = new Map<Id, Account>([SELECT Id FROM Account WHERE ID IN :AccountIds AND Industry = 'Banking']);
+        for(Opportunity o: opps) {
+            if(o.StageName == 'Closed Won' && accountIdMap.containsKey(o.accountId)) {
+                o.adderror('Cannot delete closed opportunity for a banking account that is won');
+          }
         }
     }
 }
